@@ -1,95 +1,78 @@
 # AI Job Search Automation using n8n
 
-An AI-powered job search automation workflow built with **n8n** that analyzes a resume, finds relevant internships/jobs, scores them using LLMs, and delivers organized results via Google Sheets and email.
+This project automates the job search process using **n8n**.  
+It takes a resume PDF, extracts relevant skills and job keywords using **Groq LLM**, searches jobs from multiple platforms, scores them using AI, stores them in Google Sheets, and sends an email summary.
 
 ---
 
 ## Features
 
-* Downloads a resume PDF from Google Drive
-* Extracts text from the resume
-* Uses **Groq LLM** to identify:
-
-  * target roles
-  * technical skills
-  * job search keywords
-  * internship keywords
-* Searches jobs from multiple platforms:
-
-  * **RemoteOK**
-  * **Arbeitnow**
-  * **Internshala**
-  * **Google Jobs (via SerpAPI)**
-* Cleans and merges results from all sources
-* Removes duplicate job listings
-* Scores job relevance using AI
-* Saves results to Google Sheets
-* Sends a formatted email summary of matched jobs
+- Download resume PDF from Google Drive
+- Extract resume text from PDF
+- Generate target roles, skills, and job keywords using Groq
+- Search jobs from:
+  - RemoteOK
+  - Arbeitnow
+  - Internshala
+  - Google Jobs (via SerpAPI)
+- Normalize and merge job data
+- Remove duplicate job listings
+- Score job relevance using AI
+- Save results to Google Sheets
+- Send job match email via Gmail
 
 ---
 
-## Workflow Overview
+## Workflow Steps
 
-1. **Manual Trigger**
-2. **Download Resume PDF** from Google Drive
-3. **Extract Resume Text**
-4. **Build Resume Prompt**
-5. **Groq Keyword Extraction**
-6. **Parse Resume Keywords**
-7. **Fetch jobs** from multiple sources
-8. **Parse and clean** the job data
-9. **Merge + deduplicate** jobs
-10. **Score jobs using AI**
-11. **Append results to Google Sheets**
-12. **Send email summary via Gmail**
+1. Manual Trigger
+2. Download Resume PDF from Google Drive
+3. Extract Resume Text
+4. Build Resume Prompt
+5. Groq Keyword Extraction
+6. Parse Resume Keywords
+7. Fetch jobs from multiple sources
+8. Parse and clean jobs
+9. Merge and remove duplicates
+10. Score jobs using AI
+11. Append jobs to Google Sheets
+12. Build and send email summary
 
 ---
 
 ## Tech Stack
 
-* **n8n**
-* **Groq API**
-* **SerpAPI**
-* **Google Drive**
-* **Google Sheets**
-* **Gmail**
-* **RemoteOK API**
-* **Arbeitnow API**
+- n8n
+- Groq API
+- SerpAPI
+- Google Drive
+- Google Sheets
+- Gmail
+- RemoteOK API
+- Arbeitnow API
+- Internshala scraping
 
 ---
 
 ## Setup
 
-1. Import `workflow.json` into n8n.
-2. Configure the required credentials inside n8n:
-
-   * Google Drive OAuth2
-   * Google Sheets OAuth2
-   * Gmail OAuth2
-   * Groq API / HTTP Request authentication
-3. Replace placeholder values in the workflow where required:
-
-   * `YOUR_GROQ_API_KEY_HERE`
-   * `YOUR_SERPAPI_KEY_HERE`
-   * `YOUR_GOOGLE_SHEET_ID_HERE`
-   * `YOUR_EMAIL_HERE`
-4. Update the Google Drive Resume file ID and target Google Sheet ID.
-5. Run the workflow manually or schedule it for periodic execution.
+1. Import `workflow.json` into n8n
+2. Add your credentials in n8n:
+   - Google Drive OAuth2
+   - Google Sheets OAuth2
+   - Gmail OAuth2
+   - Groq API
+3. Replace placeholder values:
+   - `YOUR_GROQ_API_KEY_HERE`
+   - `YOUR_SERPAPI_KEY_HERE`
+   - `YOUR_GOOGLE_SHEET_ID_HERE`
+   - `YOUR_EMAIL_HERE`
+4. Run the workflow manually or connect it to a schedule
 
 ---
 
-## Use Case
+## Notes
 
-This workflow is useful for:
-
-* students searching for internships
-* freshers applying for entry-level roles
-* automating repetitive job search tasks
-* ranking job opportunities based on resume relevance
-
----
-
-## Important Note
-
-Do **not** upload real API keys, tokens, or personal credentials to GitHub.
-Use **n8n credentials** or **environment variables** to keep secrets secure.
+- Do **not** upload real API keys to GitHub
+- Keep secrets in environment variables or n8n credentials
+- This workflow is useful for internship and entry-level job search automation
