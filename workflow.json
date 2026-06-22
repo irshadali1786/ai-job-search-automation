@@ -1,0 +1,396 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1oCrABR7oGSEBrPR-SWB3TwJ_whvgG4nC",
+          "mode": "list",
+          "cachedResultName": "Irshad_Ali_Resume.pdf",
+          "cachedResultUrl": "https://drive.google.com/file/d/1oCrABR7oGSEBrPR-SWB3TwJ_whvgG4nC/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [-624, -32],
+      "id": "1d8d89e2-9110-4518-aed0-c6e1d7e54ca1",
+      "name": "Download Resume PDF",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "BajeItY8jUBqWKII",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-816, -32],
+      "id": "c8299988-1e07-48de-8f73-e59fd5c09170",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [-480, -32],
+      "id": "4687f663-a2ff-403f-bc8f-537a279bd71d",
+      "name": "Extract Resume Text"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resumeText = $json.text || $json.content || $json.extractedText || JSON.stringify($json);\nconst cleanResume = String(resumeText).replace(/\\s+/g, ' ').trim().slice(0, 12000);\nconst prompt = `\nYou are a job-search assistant.\nAnalyze the following resume text and return ONLY valid JSON.\nDo not wrap in markdown. Do not include explanations. Do not include company names.\nReturn JSON in exactly this format:\n{\n  \"target_roles\": [\"role1\", \"role2\", \"role3\"],\n  \"skills\": [\"skill1\", \"skill2\", \"skill3\"],\n  \"search_keywords\": [\"keyword1\", \"keyword2\", \"keyword3\"],\n  \"internship_keywords\": [\"keyword1\", \"keyword2\", \"keyword3\"]\n}\nRules:\n- target_roles should be realistic entry-level roles based on the resume\n- skills should be technical skills/tools only\n- search_keywords should help search for jobs\n- internship_keywords should help search for internships\n- keep each list concise and relevant\n- no duplicate items\nResume:\n${cleanResume}\n`;\nreturn [{ json: { prompt, resumeText: cleanResume } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-320, -32],
+      "id": "2cba9934-e74b-40e8-b625-cfbcfaac6233",
+      "name": "Build Resume Prompt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer YOUR_GROQ_API_KEY_HERE" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  model: \"llama-3.3-70b-versatile\",\n  messages: [\n    {\n      role: \"user\",\n      content: $json.prompt\n    }\n  ],\n  temperature: 0.2\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-176, -32],
+      "id": "f1bce936-2c7d-4b96-ab5b-83bae309253b",
+      "name": "Groq Keyword Extraction"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.choices?.[0]?.message?.content || $json.content || '';\nlet parsed;\ntry {\n  parsed = JSON.parse(raw);\n} catch (e) {\n  const match = raw.match(/\\{[\\s\\S]*\\}/);\n  if (!match) throw new Error('Could not parse JSON from Groq response:\\n' + raw);\n  parsed = JSON.parse(match[0]);\n}\nconst target_roles = Array.isArray(parsed.target_roles) ? parsed.target_roles : [];\nconst skills = Array.isArray(parsed.skills) ? parsed.skills : [];\nconst search_keywords = Array.isArray(parsed.search_keywords) ? parsed.search_keywords : [];\nconst internship_keywords = Array.isArray(parsed.internship_keywords) ? parsed.internship_keywords : [];\nconst job_query = [...target_roles.map(r => `\"${r}\"`), ...search_keywords.map(s => `\"${s}\"`), \"software engineer\", \"AI engineer\", \"machine learning engineer\", \"full stack developer\", \"python developer\", \"internship\", \"entry level\"].filter(Boolean).join(\" OR \");\nconst internship_query = internship_keywords.length ? internship_keywords.join(' OR ') : [...target_roles, 'intern'].filter(Boolean).join(' OR ');\nreturn [{ json: { target_roles, skills, search_keywords, internship_keywords, job_query, internship_query, raw_ai_output: raw } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-64, -32],
+      "id": "320c92f7-5f10-47f1-9fe0-74245c463072",
+      "name": "Parse Resume Keywords"
+    },
+    {
+      "parameters": { "url": "https://remoteok.com/api", "options": {} },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [144, -32],
+      "id": "05edcd21-6dce-4ab9-9164-6fbedc8efaa8",
+      "name": "RemoteOK Jobs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const jobs = $input.all().map(item => item.json);\nconst stage2 = $('Parse Resume Keywords').first().json;\nconst roleKeywords = [...(stage2.target_roles || []), ...(stage2.search_keywords || []), ...(stage2.internship_keywords || [])].map(k => String(k).toLowerCase().trim()).filter(Boolean);\nconst validJobs = jobs.filter(job => job && (job.position || job.company || job.description));\nconst filtered = validJobs.filter(job => {\n  const haystack = [job.position || '', job.description || '', Array.isArray(job.tags) ? job.tags.join(' ') : ''].join(' ').toLowerCase();\n  return roleKeywords.some(keyword => haystack.includes(keyword));\n});\nreturn filtered.map(job => ({ json: { title: job.position || '', company: job.company || '', url: job.url || '', location: job.location || 'Remote', type: 'Job', platform: 'RemoteOK', description: job.description || '' } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [352, -32],
+      "id": "3515b6e1-cd32-4a44-ba86-b642e401625b",
+      "name": "Parse RemoteOK Jobs"
+    },
+    {
+      "parameters": { "url": "https://www.arbeitnow.com/api/job-board-api", "options": {} },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [160, 144],
+      "id": "e06a61e5-0e52-4f87-99c7-ce5c5bf1d856",
+      "name": "Arbeitnow Jobs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst jobs = Array.isArray(input.data) ? input.data : [];\nconst stage2 = $('Parse Resume Keywords').first().json;\nconst roleKeywords = [...(stage2.target_roles || []), ...(stage2.search_keywords || []), ...(stage2.internship_keywords || [])].map(k => String(k).toLowerCase().trim()).filter(Boolean);\nconst filtered = jobs.filter(job => {\n  const haystack = [job.title || '', job.description || '', Array.isArray(job.tags) ? job.tags.join(' ') : '', Array.isArray(job.job_types) ? job.job_types.join(' ') : ''].join(' ').toLowerCase();\n  return roleKeywords.some(keyword => haystack.includes(keyword));\n});\nreturn filtered.map(job => ({ json: { title: job.title || '', company: job.company_name || '', url: job.url || '', location: Array.isArray(job.location) ? job.location.join(', ') : (job.location || ''), type: 'Job', platform: 'Arbeitnow', description: job.description || '' } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [368, 144],
+      "id": "60a62262-f1d8-4d7f-9dee-cc688d8f9371",
+      "name": "Parse Arbeitnow Jobs"
+    },
+    {
+      "parameters": {
+        "url": "https://internshala.com/internships/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "User-Agent", "value": "Mozilla/5.0" },
+            { "name": "Accept", "value": "text/html" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [96, 368],
+      "id": "d807ed1d-cf94-4a2a-936c-aad897239c39",
+      "name": "Internshala Jobs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.data || $input.first().json.body || $input.first().json.html || '';\nif (!html || typeof html !== 'string') return [];\nconst clean = (s = '') => String(s).replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/\\s+/g, ' ').trim();\nconst includeKeywords = ['software','developer','development','web development','frontend','backend','full stack','react','javascript','node','python','django','fastapi','api','data science','data analyst','data analysis','machine learning','artificial intelligence','computer vision','deep learning','nlp','sql','database','automation','cloud','devops','software engineer','ai engineer','ml engineer'].map(k => k.toLowerCase());\nconst excludeKeywords = ['business development','sales','marketing','digital marketing','content writing','hr','human resources','operations','telecalling','customer support','recruitment','finance','accounting','law','graphic design','video editing'].map(k => k.toLowerCase());\nconst jobs = [];\nconst blocks = html.split('individual_internship').slice(1);\nfor (const rawBlock of blocks) {\n  const block = 'individual_internship' + rawBlock.slice(0, 25000);\n  const titleMatch = block.match(/job-title-href[^>]*title=\"([^\"]+)\"/i) || block.match(/job-title-href[^>]*>([\\s\\S]*?)<\\/a>/i);\n  const companyMatch = block.match(/company-name[^>]*>([\\s\\S]*?)<\\/a>/i) || block.match(/company-name[^>]*>([\\s\\S]*?)<\\/p>/i);\n  const locationMatches = [...block.matchAll(/location_link[^>]*>([\\s\\S]*?)<\\/a>/gi)];\n  const stipendMatch = block.match(/stipend[^>]*>([\\s\\S]*?)<\\/span>/i) || block.match(/stipend[^>]*>([\\s\\S]*?)<\\/div>/i);\n  const linkMatch = block.match(/href=\"(\\/internship\\/detail\\/[^\"]+)\"/i);\n  const title = clean(titleMatch ? titleMatch[1] : '');\n  const company = clean(companyMatch ? companyMatch[1] : '');\n  const location = locationMatches.length ? locationMatches.map(m => clean(m[1])).filter(Boolean).join(', ') : '';\n  const stipend = clean(stipendMatch ? stipendMatch[1] : '');\n  const relativeUrl = linkMatch ? linkMatch[1] : '';\n  const url = relativeUrl ? `https://internshala.com${relativeUrl}` : '';\n  if (!title || !company || !url) continue;\n  const haystack = `${title} ${company} ${location} ${stipend}`.toLowerCase();\n  if (excludeKeywords.some(keyword => haystack.includes(keyword))) continue;\n  if (!includeKeywords.some(keyword => haystack.includes(keyword))) continue;\n  jobs.push({ title, company, url, location, type: 'Internship', platform: 'Internshala', description: stipend });\n}\nconst seen = new Set();\nconst uniqueJobs = jobs.filter(job => { if (seen.has(job.url)) return false; seen.add(job.url); return true; });\nreturn uniqueJobs.map(job => ({ json: job }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [304, 368],
+      "id": "f814e3bc-a2cf-4d7d-b6bf-c4d3e9403ef7",
+      "name": "Parse Internshala Jobs"
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "engine", "value": "google_jobs" },
+            { "name": "q", "value": "={{ $node[\"Parse Resume Keywords\"].json[\"job_query\"] }}" },
+            { "name": "location", "value": "India" },
+            { "name": "api_key", "value": "YOUR_SERPAPI_KEY_HERE" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [48, 592],
+      "id": "f0a25dc5-d3e8-4035-9e75-fac8a2d47093",
+      "name": "Job Search (SerpAPI)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst jobs = data.jobs_results || data.organic_results || [];\nreturn jobs.map(job => ({ json: { title: job.title, company: job.company_name || job.company, location: job.location, url: job.link, platform: job.via, description: job.description } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 608],
+      "id": "4593021a-1e30-4690-a699-013432da0669",
+      "name": "Parse SerpAPI Jobs"
+    },
+    {
+      "parameters": { "numberInputs": 4 },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [768, 96],
+      "id": "fc113ccd-d1cf-4466-ac0c-b072951c2e5e",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const jobs = $input.all();\nconst cleanJobs = jobs.filter(j => j && j.json.title && j.json.url && j.json.title.length > 5).map(j => ({ json: { title: j.json.title, company: j.json.company || 'Unknown', location: j.json.location || 'Remote', url: j.json.url, platform: j.json.platform || 'Unknown', type: j.json.type || 'Job', description: (j.json.description || '').replace(/<[^>]*>/g, '').slice(0, 300) } }));\nreturn cleanJobs;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [912, 128],
+      "id": "446f7172-5ef3-4bcd-9601-9f9c2d4749ab",
+      "name": "global clean node"
+    },
+    {
+      "parameters": {
+        "jsCode": "const seen = new Set();\nreturn $input.all().filter(i => { if (!i.json.url) return false; if (seen.has(i.json.url)) return false; seen.add(i.json.url); return true; });"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1072, 128],
+      "id": "274133b5-0538-4442-839d-20ba672836e6",
+      "name": "duplicate"
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $json;\nconst skillsRaw = $node[\"Parse Resume Keywords\"].json.skills;\nconst skills = Array.isArray(skillsRaw) ? skillsRaw.join(', ') : (skillsRaw || '');\nconst body = { model: \"llama-3.3-70b-versatile\", messages: [{ role: \"system\", content: \"You are a job matching AI. Rate job relevance 0-10.\" }, { role: \"user\", content: `Rate this job from 0-10.\\nJOB:\\nTitle: ${job.title || 'N/A'}\\nCompany: ${job.company || 'N/A'}\\nLocation: ${job.location || 'N/A'}\\nDescription: ${job.description || 'N/A'}\\nSkills: ${skills}` }], temperature: 0.2 };\nreturn [{ json: { ...job, body } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, 128],
+      "id": "d1d45c94-bcf5-46e2-a52e-4794002f41ed",
+      "name": "Build Score Prompt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer YOUR_GROQ_API_KEY_HERE" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1488, 128],
+      "id": "84408d55-207a-4ee5-89bc-998b6b5b4007",
+      "name": "AI Score Jobs",
+      "credentials": {
+        "groqApi": {
+          "id": "NrlpsIh7bRUyluOT",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [1504, 320],
+      "id": "a8e90f39-6e4e-4b5c-b8b1-597672a548ef",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn items.map(item => {\n  const raw = item.json.choices?.[0]?.message?.content || '';\n  let score = 5;\n  const numMatch = raw.match(/(\\d+(\\.\\d+)?)/); \n  if (numMatch) score = parseFloat(numMatch[1]);\n  const reason = raw.replace(/\\n/g, ' ').slice(0, 200);\n  let priority = 'low';\n  if (score >= 8) priority = 'high';\n  else if (score >= 6) priority = 'medium';\n  return { json: { title: item.json.title, company: item.json.company, url: item.json.url, location: item.json.location, type: item.json.type, platform: item.json.platform, description: item.json.description, ai_score: score, ai_reason: reason, apply_priority: priority } };\n}).filter(item => (item.json.ai_score || 0) >= 1);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1696, 128],
+      "id": "7cafff4b-a3ac-4ca0-8210-a891b0a590d5",
+      "name": "Merge Scores Back"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "list",
+          "cachedResultName": "resume",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID_HERE/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID_HERE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ new Date().toLocaleDateString('en-IN') }}",
+            "Title": "={{ $json.title }}",
+            "Company": "={{ $json.company }}",
+            "Platform": "={{ $json.platform }}",
+            "Type": "={{ $json.type }}",
+            "Location": "={{ $json.location }}",
+            "Url": "={{ $json.url }}",
+            "AI Score": "={{ $json.ai_score }}",
+            "Reason": "={{ $json.ai_reason }}",
+            "Priority": "={{ $json.apply_priority }}",
+            "Status": "Not Applied"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "Date", "displayName": "Date", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Title", "displayName": "Title", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Company", "displayName": "Company", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Platform", "displayName": "Platform", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Type", "displayName": "Type", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Location", "displayName": "Location", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Url", "displayName": "Url", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "AI Score", "displayName": "AI Score", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Reason", "displayName": "Reason", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Priority", "displayName": "Priority", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Status", "displayName": "Status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1904, 128],
+      "id": "02bc949c-46d5-4ada-acb7-27062442efb6",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "U1ZaSdb1TK1flk4Y",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const jobs = $input.all();\nconst today = new Date().toLocaleDateString('en-IN', { day:'numeric', month:'long', year:'numeric' });\nconst high = jobs.filter(j => j.json.Priority === 'high');\nconst medium = jobs.filter(j => j.json.Priority === 'medium');\nconst low = jobs.filter(j => j.json.Priority === 'low');\nconst renderJobs = (list, color) => list.map(j => `<div style=\"border-left:4px solid ${color};padding:12px;margin:10px 0;background:#f9f9f9;border-radius:4px;\"><b>${j.json.Title}</b> @ ${j.json.Company}<br/><small>${j.json.Platform} | ${j.json.Location} | ${j.json.Type}</small><br/><small>AI Score: <b>${j.json['AI Score']}/10</b> — ${j.json.Reason}</small><br/><a href=\"${j.json.Url}\" style=\"color:#0077b5;\">Apply →</a></div>`).join('');\nconst body = `<div style=\"font-family:Arial,sans-serif;max-width:680px;margin:auto;\"><h2 style=\"background:#0077b5;color:white;padding:16px;border-radius:6px;\">🎯 ${jobs.length} New Job Matches — ${today}</h2>${high.length ? `<h3 style=\"color:#e74c3c;\">🔥 High Priority (${high.length})</h3>${renderJobs(high,'#e74c3c')}` : ''}${medium.length ? `<h3 style=\"color:#27ae60;\">✅ Medium Priority (${medium.length})</h3>${renderJobs(medium,'#27ae60')}` : ''}${low.length ? `<h3 style=\"color:#3498db;\">🔵 Low Priority (${low.length})</h3>${renderJobs(low,'#3498db')}` : ''}<hr/><p style=\"font-size:11px;color:#aaa;\">n8n Job Search Automation</p></div>`;\nreturn [{ json: { subject: `🎯 ${jobs.length} New Job Matches — ${today}`, body } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2112, 128],
+      "id": "8d689a99-c194-4c10-9688-a416b253240e",
+      "name": "Build Email"
+    },
+    {
+      "parameters": {
+        "sendTo": "YOUR_EMAIL_HERE",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [2320, 128],
+      "id": "5c8c6a88-07e7-446d-81b8-e2dd06629012",
+      "name": "Send a message",
+      "webhookId": "120e47f2-d325-4191-81b8-1be21386bb1f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "PELMe4tR70mjp3eK",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Download Resume PDF": { "main": [[{ "node": "Extract Resume Text", "type": "main", "index": 0 }]] },
+    "Manual Trigger": { "main": [[{ "node": "Download Resume PDF", "type": "main", "index": 0 }]] },
+    "Extract Resume Text": { "main": [[{ "node": "Build Resume Prompt", "type": "main", "index": 0 }]] },
+    "Build Resume Prompt": { "main": [[{ "node": "Groq Keyword Extraction", "type": "main", "index": 0 }]] },
+    "Groq Keyword Extraction": { "main": [[{ "node": "Parse Resume Keywords", "type": "main", "index": 0 }]] },
+    "Parse Resume Keywords": { "main": [[{ "node": "RemoteOK Jobs", "type": "main", "index": 0 }, { "node": "Arbeitnow Jobs", "type": "main", "index": 0 }, { "node": "Internshala Jobs", "type": "main", "index": 0 }, { "node": "Job Search (SerpAPI)", "type": "main", "index": 0 }]] },
+    "RemoteOK Jobs": { "main": [[{ "node": "Parse RemoteOK Jobs", "type": "main", "index": 0 }]] },
+    "Parse RemoteOK Jobs": { "main": [[{ "node": "Merge", "type": "main", "index": 0 }]] },
+    "Arbeitnow Jobs": { "main": [[{ "node": "Parse Arbeitnow Jobs", "type": "main", "index": 0 }]] },
+    "Parse Arbeitnow Jobs": { "main": [[{ "node": "Merge", "type": "main", "index": 1 }]] },
+    "Internshala Jobs": { "main": [[{ "node": "Parse Internshala Jobs", "type": "main", "index": 0 }]] },
+    "Parse Internshala Jobs": { "main": [[{ "node": "Merge", "type": "main", "index": 2 }]] },
+    "Job Search (SerpAPI)": { "main": [[{ "node": "Parse SerpAPI Jobs", "type": "main", "index": 0 }]] },
+    "Parse SerpAPI Jobs": { "main": [[{ "node": "Merge", "type": "main", "index": 3 }]] },
+    "Merge": { "main": [[{ "node": "global clean node", "type": "main", "index": 0 }]] },
+    "global clean node": { "main": [[{ "node": "duplicate", "type": "main", "index": 0 }]] },
+    "duplicate": { "main": [[{ "node": "Build Score Prompt", "type": "main", "index": 0 }]] },
+    "Build Score Prompt": { "main": [[{ "node": "Merge1", "type": "main", "index": 0 }, { "node": "AI Score Jobs", "type": "main", "index": 0 }]] },
+    "Merge Scores Back": { "main": [[{ "node": "Append row in sheet", "type": "main", "index": 0 }]] },
+    "AI Score Jobs": { "main": [[{ "node": "Merge1", "type": "main", "index": 1 }]] },
+    "Merge1": { "main": [[{ "node": "Merge Scores Back", "type": "main", "index": 0 }]] },
+    "Append row in sheet": { "main": [[{ "node": "Build Email", "type": "main", "index": 0 }]] },
+    "Build Email": { "main": [[{ "node": "Send a message", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0cf5989844470bfcbb684f89035c0e33fa9462f82d9d71b4d0379391ca6e1984"
+  }
+}
