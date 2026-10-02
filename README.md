@@ -71,6 +71,18 @@ It takes a resume PDF, extracts relevant skills and job keywords using **Groq LL
 
 ---
 
+## 📸 Screenshots
+
+### n8n Workflow
+
+![n8n Workflow](Screenshots/workflow.jpg)
+
+### Job Match Email
+
+![Job Match Email](Screenshots/mail.jpg)
+
+---
+
 ## Notes
 
 - Do **not** upload real API keys to GitHub
